@@ -1,0 +1,69 @@
+name: Reusable Terraform Workflow
+
+on:
+  workflow_call:
+    inputs:
+      aws-region:
+        required: true
+        type: string
+      environment:
+        required: true
+        type: string
+      deploy:
+        required: true
+        type: boolean
+      tf-version:
+        required: true
+        type: string
+      local-execution-mode:
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      aws-plan-role-arn:
+        required: true
+      aws-apply-role-arn:
+        required: true
+
+permissions:
+  id-token: write  # Requerido para OIDC en todos los jobs que usen AWS
+  contents: read
+
+jobs:
+  terraform-plan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ inputs.tf-version }}
+      - name: Configure AWS Credentials for Plan
+        if: inputs.local-execution-mode
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.aws-plan-role-arn }}
+          aws-region: ${{ inputs.aws-region }}
+      - name: Terraform Init
+        run: terraform init
+      - name: Terraform Plan
+        run: terraform plan -out=tfplan -var="environment=${{ inputs.environment }}"
+
+  terraform-apply:
+    runs-on: ubuntu-latest
+    needs: terraform-plan
+    if: inputs.deploy
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ inputs.tf-version }}
+      - name: Configure AWS Credentials for Apply
+        if: inputs.local-execution-mode
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.aws-apply-role-arn }}
+          aws-region: ${{ inputs.aws-region }}
+      - name: Terraform Apply
+        run: terraform apply tfplan
