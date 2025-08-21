@@ -164,6 +164,9 @@ jobs:
           actions        = ${{ inputs.actions }}
           TFVARS
 
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
       - name: terraform init
         working-directory: terraform-oidc
         run: terraform init -input=false
