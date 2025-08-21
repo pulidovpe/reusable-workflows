@@ -11,8 +11,8 @@ on:
         description: "Región AWS"
         required: true
         type: string
-      repo_name:
-        description: "owner/repo que usará el rol (para la condición de sub)"
+      repo_names:
+        description: "Lista JSON de repositorios autorizados para usar el rol"
         required: true
         type: string
       role_name:
@@ -59,33 +59,17 @@ jobs:
         id: detect
         shell: bash
         run: |
-          set -euo pipefail
-          # Detectar OIDC existente
-          OIDC_ARN="$(aws iam list-open-id-connect-providers \
+          OIDC_ARN=$(aws iam list-open-id-connect-providers \
             --query 'OpenIDConnectProviderList[].Arn' \
-            --output text | tr '\t' '\n' | grep 'token.actions.githubusercontent.com' || true)"
-          echo "oidc_arn=${OIDC_ARN}" >> "$GITHUB_OUTPUT"
+            --output text | tr '\t' '\n' | grep 'token.actions.githubusercontent.com' || true)
 
-          # Detectar rol existente
+          echo "oidc_arn=$OIDC_ARN" >> "$GITHUB_OUTPUT"
+
           ROLE_NAME="${{ inputs.role_name }}"
           if aws iam get-role --role-name "$ROLE_NAME" >/dev/null 2>&1; then
-            echo "role_exists=true"  >> "$GITHUB_ENV"
+            echo "role_exists=true" >> "$GITHUB_ENV"
           else
             echo "role_exists=false" >> "$GITHUB_ENV"
-          fi
-
-          # Detectar política inline existente
-          POLICY_NAME="github-actions-dynamic-policy"
-          if aws iam list-role-policies --role-name "$ROLE_NAME" \
-               --query 'PolicyNames' --output text | grep -w "$POLICY_NAME" >/dev/null 2>&1; then
-            echo "policy_exists=true"  >> "$GITHUB_ENV"
-          else
-            echo "policy_exists=false" >> "$GITHUB_ENV"
-          fi
-
-          # Exportar OIDC_ARN a env para pasos siguientes
-          if [[ -n "${OIDC_ARN:-}" ]]; then
-            echo "OIDC_ARN=${OIDC_ARN}" >> "$GITHUB_ENV"
           fi
 
       - name: Generar configuración de Terraform
@@ -106,7 +90,7 @@ jobs:
 
           variable "aws_account_id" { type = string }
           variable "aws_region"     { type = string }
-          variable "repo_name"      { type = string }
+          variable "repo_names"     { type = list(string) }
           variable "role_name"      { type = string }
           variable "actions"        { type = list(string) }
 
@@ -118,14 +102,13 @@ jobs:
           resource "aws_iam_openid_connect_provider" "github" {
             url            = "https://token.actions.githubusercontent.com"
             client_id_list = ["sts.amazonaws.com"]
-            # Incluir ambas huellas por compatibilidad histórica
             thumbprint_list = [
               "6938fd4d98bab03faadb97b34396831e3780aea1",
               "9e99a48a9960b14926bb7f3b02e22da0ecd4e1c9"
             ]
           }
 
-          # Rol para GitHub Actions (trust policy con condiciones recomendadas)
+          # Rol para GitHub Actions (trust policy con múltiples repos)
           resource "aws_iam_role" "github_actions_role" {
             name = var.role_name
 
@@ -140,7 +123,9 @@ jobs:
                   Action = "sts:AssumeRoleWithWebIdentity"
                   Condition = {
                     StringLike = {
-                      "token.actions.githubusercontent.com:sub" = "repo:${var.repo_name}:*"
+                      "token.actions.githubusercontent.com:sub" = [
+                        for repo in var.repo_names : "repo:${repo}:*"
+                      ]
                     }
                     StringEquals = {
                       "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
@@ -151,7 +136,7 @@ jobs:
             })
           }
 
-          # Política inline dinámica con acciones parametrizables
+          # Política inline dinámica
           resource "aws_iam_role_policy" "github_policy" {
             name = "github-actions-dynamic-policy"
             role = aws_iam_role.github_actions_role.id
@@ -172,38 +157,14 @@ jobs:
           cat > terraform-oidc/terraform.tfvars <<TFVARS
           aws_account_id = "${{ inputs.aws_account_id }}"
           aws_region     = "${{ inputs.aws_region }}"
-          repo_name      = "${{ inputs.repo_name }}"
+          repo_names     = ${{ inputs.repo_names }}
           role_name      = "${{ inputs.role_name }}"
           actions        = ${{ inputs.actions }}
           TFVARS
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-
       - name: terraform init
         working-directory: terraform-oidc
         run: terraform init -input=false
-
-      - name: Importar recursos existentes (idempotencia)
-        working-directory: terraform-oidc
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          # Importar OIDC si ya existe
-          if [[ -n "${OIDC_ARN:-}" ]]; then
-            terraform import -input=false aws_iam_openid_connect_provider.github "${OIDC_ARN}" || true
-          fi
-
-          # Importar rol si existe
-          if [[ "${role_exists:-false}" == "true" ]]; then
-            terraform import -input=false aws_iam_role.github_actions_role "${{ inputs.role_name }}" || true
-          fi
-
-          # Importar política inline si existe
-          if [[ "${policy_exists:-false}" == "true" ]]; then
-            terraform import -input=false aws_iam_role_policy.github_policy "${{ inputs.role_name }}:github-actions-dynamic-policy" || true
-          fi
 
       - name: terraform apply
         working-directory: terraform-oidc
@@ -215,10 +176,5 @@ jobs:
         run: |
           ROLE_ARN="arn:aws:iam::${{ inputs.aws_account_id }}:role/${{ inputs.role_name }}"
           OIDC_ARN="${{ steps.detect.outputs.oidc_arn }}"
-          # Si el OIDC no existía, su ARN queda en estado; obtengámoslo de salida de terraform
-          if [[ -z "$OIDC_ARN" ]]; then
-            OIDC_ARN=$(terraform -chdir=terraform-oidc state show aws_iam_openid_connect_provider.github \
-              | awk '/^arn =/ {print $3}' | head -n1 || true)
-          fi
           echo "role_arn=${ROLE_ARN}" >> "$GITHUB_OUTPUT"
           echo "oidc_arn=${OIDC_ARN}" >> "$GITHUB_OUTPUT"
