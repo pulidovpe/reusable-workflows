@@ -108,14 +108,14 @@ jobs:
             ]
           }
 
-          # Rol para GitHub Actions (trust policy con múltiples repos)
+          # Rol para GitHub Actions (trust policy dinámica)
           resource "aws_iam_role" "github_actions_role" {
             name = var.role_name
 
             assume_role_policy = jsonencode({
               Version = "2012-10-17"
               Statement = [
-                {
+              {
                   Effect = "Allow"
                   Principal = {
                     Federated = "arn:aws:iam::${var.aws_account_id}:oidc-provider/token.actions.githubusercontent.com"
@@ -123,16 +123,18 @@ jobs:
                   Action = "sts:AssumeRoleWithWebIdentity"
                   Condition = {
                     StringLike = {
-                      "token.actions.githubusercontent.com:sub" = [
-                        for repo in var.repo_names : "repo:${repo}:*"
-                      ]
-                    }
-                    StringEquals = {
-                      "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
-                    }
+                      # Si hay más de 1 repo -> lista; si hay 1 repo -> string
+                      "token.actions.githubusercontent.com:sub" = (
+                        length(var.repo_names) > 1 ?
+                        [for repo in var.repo_names : "repo:${repo}:*"] :
+                        "repo:${var.repo_names[0]}:*"
+                      )
+                  }
+                  StringEquals = {
+                    "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
                   }
                 }
-              ]
+              }]
             })
           }
 
