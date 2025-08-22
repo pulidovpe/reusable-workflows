@@ -77,7 +77,7 @@ jobs:
         run: |
           cd reusable-workflows/terraform/oidc
           terraform init -input=false
-          ARN=$(aws iam list-open-id-connect-providers --query "OpenIDConnectProviderList[?ClientIDList.contains(@, 'sts.amazonaws.com') && ends_with(Arn, ':oidc-provider/token.actions.githubusercontent.com')].Arn | [0]" --output text)
+          ARN=$(aws iam list-open-id-connect-providers --query "OpenIDConnectProviderList[?ClientIDList != \`null\` && contains(ClientIDList, 'sts.amazonaws.com') && ends_with(Arn, ':oidc-provider/token.actions.githubusercontent.com')].Arn | [0]" --output text)
           if [ "$ARN" != "None" ] && [ -n "$ARN" ]; then
             echo "Provider exists, importing..."
             terraform import -input=false aws_iam_openid_connect_provider.github $ARN
