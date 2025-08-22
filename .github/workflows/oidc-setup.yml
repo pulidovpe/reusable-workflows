@@ -80,7 +80,13 @@ jobs:
           ARN=$(aws iam list-open-id-connect-providers --query "OpenIDConnectProviderList[?ClientIDList != \`null\` && contains(ClientIDList, 'sts.amazonaws.com') && ends_with(Arn, ':oidc-provider/token.actions.githubusercontent.com')].Arn | [0]" --output text)
           if [ "$ARN" != "None" ] && [ -n "$ARN" ]; then
             echo "Provider exists, importing..."
-            terraform import -input=false aws_iam_openid_connect_provider.github $ARN
+            terraform import -input=false \
+              -var="aws_account_id=${{ inputs.aws_account_id }}" \
+              -var="aws_region=${{ inputs.aws_region }}" \
+              -var="role_name=${{ inputs.role_name }}" \
+              -var='repo_names=${{ inputs.repo_names }}' \
+              -var='actions=${{ inputs.actions }}' \
+              aws_iam_openid_connect_provider.github $ARN
           else
             echo "Provider does not exist, will create."
           fi
@@ -94,7 +100,13 @@ jobs:
           ROLE_ARN=$(aws iam get-role --role-name ${{ inputs.role_name }} --query Role.Arn --output text 2>/dev/null || true)
           if [ -n "$ROLE_ARN" ]; then
             echo "Role exists, importing..."
-            terraform import -input=false aws_iam_role.github_actions_role ${{ inputs.role_name }}
+            terraform import -input=false \
+              -var="aws_account_id=${{ inputs.aws_account_id }}" \
+              -var="aws_region=${{ inputs.aws_region }}" \
+              -var="role_name=${{ inputs.role_name }}" \
+              -var='repo_names=${{ inputs.repo_names }}' \
+              -var='actions=${{ inputs.actions }}' \
+              aws_iam_role.github_actions_role ${{ inputs.role_name }}
           else
             echo "Role does not exist, will create."
           fi
@@ -107,7 +119,13 @@ jobs:
           cd reusable-workflows/terraform/oidc
           POLICY_NAME="${{ inputs.role_name }}-policy"
           if aws iam get-role-policy --role-name ${{ inputs.role_name }} --policy-name $POLICY_NAME >/dev/null 2>&1; then
-            terraform import -input=false aws_iam_role_policy.github_policy ${{ inputs.role_name }}:$POLICY_NAME
+            terraform import -input=false \
+              -var="aws_account_id=${{ inputs.aws_account_id }}" \
+              -var="aws_region=${{ inputs.aws_region }}" \
+              -var="role_name=${{ inputs.role_name }}" \
+              -var='repo_names=${{ inputs.repo_names }}' \
+              -var='actions=${{ inputs.actions }}' \
+              aws_iam_role_policy.github_policy ${{ inputs.role_name }}:$POLICY_NAME
           fi
 
       # 8. Ejecutar Terraform Apply con variables dinámicas
