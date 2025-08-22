@@ -109,15 +109,19 @@ jobs:
       - name: Generar archivo tfvars dinámico
         run: |
           cd reusable-workflows/terraform/oidc
-          cat <<EOF > terraform.auto.tfvars.json
-          {
-            "aws_region": "${{ inputs.aws_region }}",
-            "role_name_prefix": "${{ inputs.role_name_prefix }}",
-            "repo_names": ${{ inputs.repo_names }},
-            "policy_actions": ${{ inputs.policy_actions }},
-            "oidc_actions": ${{ inputs.oidc_actions }}
-          }
-          EOF
+          jq -n \
+            --arg aws_region "${{ inputs.aws_region }}" \
+            --arg role_name_prefix "${{ inputs.role_name_prefix }}" \
+            --argjson repo_names "${{ inputs.repo_names }}" \
+            --argjson policy_actions "${{ inputs.policy_actions }}" \
+            --argjson oidc_actions "${{ inputs.oidc_actions }}" \
+            '{
+              aws_region: $aws_region,
+              role_name_prefix: $role_name_prefix,
+              repo_names: $repo_names,
+              policy_actions: $policy_actions,
+              oidc_actions: $oidc_actions
+            }' > terraform.auto.tfvars.json
 
       # 7. Terraform Plan
       - name: Terraform Plan
