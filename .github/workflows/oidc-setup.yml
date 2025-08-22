@@ -12,15 +12,15 @@ on:
         required: true
         type: string
       role_name:
-        description: "IAM Role name to create or update"
+        description: "IAM Role name to create or update (usa diferente para permisos distintos)"
         required: true
         type: string
       repo_names:
-        description: "Lista de repos autorizados para usar OIDC (ej: org/repo1,org/repo2)"
+        description: "Lista completa de repos autorizados (e.g., [\"repo1\",\"repo2\"]); pasa todos para evitar sobreescritura"
         required: true
         type: string
       actions:
-        description: "Acciones de AWS permitidas para la policy. Ejemplo: ec2:*,s3:*"
+        description: "Lista completa de acciones AWS permitidas (e.g., [\"ec2:*\",\"s3:*\"]); pasa todos para el rol"
         required: true
         type: string
     secrets:
@@ -44,11 +44,9 @@ jobs:
       oidc_provider_arn: ${{ steps.tf-outputs.outputs.oidc_provider_arn }}
 
     steps:
-      # 1. Checkout del repo que llama, por si lo necesitamos
       - name: Checkout caller repo
         uses: actions/checkout@v4
 
-      # 2. Clonar repo reusable donde vive Terraform
       - name: Checkout reusable workflows repo
         uses: actions/checkout@v4
         with:
@@ -56,7 +54,6 @@ jobs:
           ref: main
           path: reusable-workflows
 
-      # 3. Configurar credenciales AWS (para checks e imports)
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -64,72 +61,16 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ inputs.aws_region }}
 
-      # 4. Configurar Terraform
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.8.5
 
-      # 5. Check e Import OIDC Provider si existe
-      - name: Check and Import OIDC Provider
-        id: oidc-provider
-        shell: bash
+      - name: Terraform Init
         run: |
           cd reusable-workflows/terraform/oidc
           terraform init -input=false
-          ARN=$(aws iam list-open-id-connect-providers --query "OpenIDConnectProviderList[?ClientIDList != \`null\` && contains(ClientIDList, 'sts.amazonaws.com') && ends_with(Arn, ':oidc-provider/token.actions.githubusercontent.com')].Arn | [0]" --output text)
-          if [ "$ARN" != "None" ] && [ -n "$ARN" ]; then
-            echo "Provider exists, importing..."
-            terraform import -input=false \
-              -var 'aws_account_id=${{ inputs.aws_account_id }}' \
-              -var 'aws_region=${{ inputs.aws_region }}' \
-              -var 'role_name=${{ inputs.role_name }}' \
-              -var 'repo_names=${{ inputs.repo_names }}' \
-              -var 'actions=${{ inputs.actions }}' \
-              aws_iam_openid_connect_provider.github $ARN
-          else
-            echo "Provider does not exist, will create."
-          fi
 
-      # 6. Check e Import IAM Role si existe
-      - name: Check and Import IAM Role
-        id: iam-role
-        shell: bash
-        run: |
-          cd reusable-workflows/terraform/oidc
-          ROLE_ARN=$(aws iam get-role --role-name ${{ inputs.role_name }} --query Role.Arn --output text 2>/dev/null || true)
-          echo "role_arn=$ROLE_ARN" >> $GITHUB_OUTPUT  # Agregado para exponer output y habilitar el if en policy
-          if [ -n "$ROLE_ARN" ]; then
-            echo "Role exists, importing..."
-            terraform import -input=false \
-              -var 'aws_account_id=${{ inputs.aws_account_id }}' \
-              -var 'aws_region=${{ inputs.aws_region }}' \
-              -var 'role_name=${{ inputs.role_name }}' \
-              -var 'repo_names=${{ inputs.repo_names }}' \
-              -var 'actions=${{ inputs.actions }}' \
-              aws_iam_role.github_actions_role ${{ inputs.role_name }}
-          else
-            echo "Role does not exist, will create."
-          fi
-
-      # 7. Check e Import IAM Policy si existe (solo si rol existe)
-      - name: Check and Import IAM Policy
-        if: steps.iam-role.outputs.role_arn != ''
-        shell: bash
-        run: |
-          cd reusable-workflows/terraform/oidc
-          POLICY_NAME="${{ inputs.role_name }}-policy"
-          if aws iam get-role-policy --role-name ${{ inputs.role_name }} --policy-name $POLICY_NAME >/dev/null 2>&1; then
-            terraform import -input=false \
-              -var 'aws_account_id=${{ inputs.aws_account_id }}' \
-              -var 'aws_region=${{ inputs.aws_region }}' \
-              -var 'role_name=${{ inputs.role_name }}' \
-              -var 'repo_names=${{ inputs.repo_names }}' \
-              -var 'actions=${{ inputs.actions }}' \
-              aws_iam_role_policy.github_policy ${{ inputs.role_name }}:$POLICY_NAME
-          fi
-
-      # 8. Ejecutar Terraform Apply con variables dinámicas
       - name: Terraform Apply
         run: |
           cd reusable-workflows/terraform/oidc
@@ -140,7 +81,6 @@ jobs:
             -var 'repo_names=${{ inputs.repo_names }}' \
             -var 'actions=${{ inputs.actions }}'
 
-      # 9. Capturar Outputs de Terraform
       - name: Get Terraform Outputs
         id: tf-outputs
         run: |

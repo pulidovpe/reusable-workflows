@@ -1,3 +1,20 @@
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 6.0"
+    }
+  }
+
+  required_version = ">= 1.12.2"
+  backend "s3" {
+    bucket         = "devops-aws-backend-tfstate"
+    key            = "test/oidc-setup.tfstate"
+    region         = var.aws_region
+    encrypt        = true
+  }
+}
+
 provider "aws" {
   region = var.aws_region
 }
