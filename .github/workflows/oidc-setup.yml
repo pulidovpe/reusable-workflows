@@ -11,8 +11,8 @@ on:
         description: "AWS Region"
         required: true
         type: string
-      role_name:
-        description: "IAM Role name to create or update (usa diferente para permisos distintos)"
+      role_name_prefix:
+        description: "IAM Role name (usa diferente para permisos distintos)"
         required: true
         type: string
       repo_names:
@@ -74,12 +74,13 @@ jobs:
       - name: Terraform Apply
         run: |
           cd reusable-workflows/terraform/oidc
-          terraform apply -auto-approve -input=false \
-            -var 'aws_account_id=${{ inputs.aws_account_id }}' \
-            -var 'aws_region=${{ inputs.aws_region }}' \
-            -var 'role_name=${{ inputs.role_name }}' \
-            -var 'repo_names=${{ inputs.repo_names }}' \
-            -var 'actions=${{ inputs.actions }}'
+          terraform apply -auto-approve \
+          -var="aws_account_id=${{ secrets.AWS_ACCOUNT_ID }}" \
+          -var="aws_region=${{ inputs.aws_region }}' \
+          -var="role_name_prefix=${{ inputs.role_name_prefix }}" \
+          -var="repo_names=${{ inputs.repo_names }}"
+          -var="actions=${{ inputs.actions }}"
+          
 
       - name: Get Terraform Outputs
         id: tf-outputs

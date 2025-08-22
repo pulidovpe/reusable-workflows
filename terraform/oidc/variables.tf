@@ -5,21 +5,16 @@ variable "aws_account_id" {
 
 variable "aws_region" {
   type        = string
-  description = "AWS region"
-}
-
-variable "role_name" {
-  type        = string
-  description = "Role name for GitHub OIDC"
+  description = "AWS Region"
 }
 
 variable "repo_names" {
   type        = list(string)
-  description = "List of GitHub repositories allowed to assume the role"
+  description = "Lista de repositorios habilitados para usar OIDC"
 }
 
-variable "actions" {
-  type        = list(string)
-  description = "AWS actions allowed in the policy"
-  default     = ["ec2:*", "s3:*"]
+variable "role_name_prefix" {
+  type        = string
+  default     = "oidc-github-actions-role"
+  description = "Prefijo para nombrar roles de OIDC dinámicamente"
 }
