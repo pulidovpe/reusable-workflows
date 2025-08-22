@@ -3,30 +3,32 @@ name: Setup OIDC
 on:
   workflow_call:
     inputs:
-      aws_account_id:
-        description: "AWS Account ID"
-        required: true
-        type: string
-      aws_region:
-        description: "AWS Region"
-        required: true
-        type: string
       role_name_prefix:
-        description: "IAM Role name (usa diferente para permisos distintos)"
+        description: "Prefijo para los roles IAM"
         required: true
         type: string
       repo_names:
-        description: "Lista completa de repos autorizados (e.g., [\"repo1\",\"repo2\"]); pasa todos para evitar sobreescritura"
+        description: "Lista de repos autorizados para usar OIDC"
         required: true
         type: string
-      actions:
-        description: "Lista completa de acciones AWS permitidas (e.g., [\"ec2:*\",\"s3:*\"]); pasa todos para el rol"
+      oidc_actions:
+        description: "Acciones permitidas para OIDC (branches/tags)"
+        required: false
+        type: string
+        default: "*"
+      policy_actions:
+        description: "Acciones AWS permitidas por la política"
+        required: false
+        type: string
+        default: '["s3:*","ec2:*"]'
+      aws_region:
+        description: "AWS region"
         required: true
         type: string
     secrets:
-      AWS_ACCESS_KEY_ID:
+      aws_access_key_id:
         required: true
-      AWS_SECRET_ACCESS_KEY:
+      aws_secret_access_key:
         required: true
     outputs:
       role_arn:
@@ -44,8 +46,10 @@ jobs:
       oidc_provider_arn: ${{ steps.tf-outputs.outputs.oidc_provider_arn }}
 
     steps:
-      - name: Checkout caller repo
-        uses: actions/checkout@v4
+      # 1. Checkout del repositorio donde está la config de Terraform
+      
+      # - name: Checkout caller repo
+      #   uses: actions/checkout@v4
 
       - name: Checkout reusable workflows repo
         uses: actions/checkout@v4
@@ -54,34 +58,49 @@ jobs:
           ref: main
           path: reusable-workflows
 
-      - name: Configure AWS Credentials
+      # 2. Configurar credenciales AWS
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ inputs.aws_region }}
 
+      # 3. Instalar Terraform
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.12.2
+          terraform_version: 1.8.5
 
+      # 4. Inicializar Terraform con backend remoto
       - name: Terraform Init
-        run: |
+        run:  |
           cd reusable-workflows/terraform/oidc
           terraform init -input=false
 
+      # 5. Terraform Plan (debug)
+      - name: Terraform Plan
+        run: |
+          cd reusable-workflows/terraform/oidc
+          terraform plan \
+            -var='aws_region=${{ inputs.aws_region }}' \
+            -var='role_name_prefix=${{ inputs.role_name_prefix }}' \
+            -var='repo_names=${{ fromJSON(inputs.repo_names) }}' \
+            -var='oidc_actions=${{ inputs.oidc_actions }}' \
+            -var='policy_actions=${{ fromJSON(inputs.policy_actions) }}'
+
+      # 6. Aplicar cambios
       - name: Terraform Apply
         run: |
           cd reusable-workflows/terraform/oidc
           terraform apply -auto-approve \
-          -var="aws_account_id=${{ secrets.AWS_ACCOUNT_ID }}" \
-          -var="aws_region=${{ inputs.aws_region }}' \
-          -var="role_name_prefix=${{ inputs.role_name_prefix }}" \
-          -var="repo_names=${{ inputs.repo_names }}"
-          -var="actions=${{ inputs.actions }}"
-          
+            -var='aws_region=${{ inputs.aws_region }}' \
+            -var='role_name_prefix=${{ inputs.role_name_prefix }}' \
+            -var='repo_names=${{ fromJSON(inputs.repo_names) }}' \
+            -var='oidc_actions=${{ inputs.oidc_actions }}' \
+            -var='policy_actions=${{ fromJSON(inputs.policy_actions) }}'
 
+      # 7. Obtener outputs y pasarlos al entorno
       - name: Get Terraform Outputs
         id: tf-outputs
         run: |
