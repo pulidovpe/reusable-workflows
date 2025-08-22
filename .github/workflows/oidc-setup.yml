@@ -4,180 +4,52 @@ on:
   workflow_call:
     inputs:
       aws_account_id:
-        description: "Cuenta de AWS destino"
         required: true
         type: string
       aws_region:
-        description: "Región AWS"
-        required: true
-        type: string
-      repo_names:
-        description: "Lista JSON de repositorios autorizados para usar el rol"
         required: true
         type: string
       role_name:
-        description: "Nombre del rol IAM a crear/actualizar"
+        required: true
+        type: string
+      repo_names:
+        description: 'Repos autorizados. Ej: ["org/repo1","org/repo2"]'
         required: true
         type: string
       actions:
-        description: 'Lista JSON de acciones IAM, p.ej: ["ec2:*","s3:*"]'
-        required: false
+        description: 'Acciones dinámicas. Ej: ["ec2:*","s3:*"]'
+        required: true
         type: string
-        default: '["ec2:*","s3:*"]'
     secrets:
       AWS_ACCESS_KEY_ID:
         required: true
       AWS_SECRET_ACCESS_KEY:
         required: true
-    outputs:
-      role_arn:
-        description: "ARN del rol creado/actualizado"
-        value: ${{ jobs.oidc-setup.outputs.role_arn }}
-      oidc_arn:
-        description: "ARN del OIDC provider"
-        value: ${{ jobs.oidc-setup.outputs.oidc_arn }}
 
 jobs:
-  oidc-setup:
+  setup-oidc:
     runs-on: ubuntu-latest
-    outputs:
-      role_arn: ${{ steps.set-outputs.outputs.role_arn }}
-      oidc_arn: ${{ steps.set-outputs.outputs.oidc_arn }}
 
     steps:
-      - name: Checkout
+      - name: Checkout repo
         uses: actions/checkout@v4
-
-      - name: Configurar credenciales AWS
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ inputs.aws_region }}
-
-      - name: Detectar recursos existentes (OIDC y Rol)
-        id: detect
-        shell: bash
-        run: |
-          OIDC_ARN=$(aws iam list-open-id-connect-providers \
-            --query 'OpenIDConnectProviderList[].Arn' \
-            --output text | tr '\t' '\n' | grep 'token.actions.githubusercontent.com' || true)
-
-          echo "oidc_arn=$OIDC_ARN" >> "$GITHUB_OUTPUT"
-
-          ROLE_NAME="${{ inputs.role_name }}"
-          if aws iam get-role --role-name "$ROLE_NAME" >/dev/null 2>&1; then
-            echo "role_exists=true" >> "$GITHUB_ENV"
-          else
-            echo "role_exists=false" >> "$GITHUB_ENV"
-          fi
-
-      - name: Generar configuración de Terraform
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p terraform-oidc
-          cat > terraform-oidc/main.tf <<'HCL'
-          terraform {
-            required_version = ">= 1.5.0"
-            required_providers {
-              aws = {
-                source  = "hashicorp/aws"
-                version = "~> 5.0"
-              }
-            }
-          }
-
-          variable "aws_account_id" { type = string }
-          variable "aws_region"     { type = string }
-          variable "repo_names"     { type = list(string) }
-          variable "role_name"      { type = string }
-          variable "actions"        { type = list(string) }
-
-          provider "aws" {
-            region = var.aws_region
-          }
-
-          # OIDC provider de GitHub Actions
-          resource "aws_iam_openid_connect_provider" "github" {
-            url            = "https://token.actions.githubusercontent.com"
-            client_id_list = ["sts.amazonaws.com"]
-            thumbprint_list = [
-              "6938fd4d98bab03faadb97b34396831e3780aea1",
-              "9e99a48a9960b14926bb7f3b02e22da0ecd4e1c9"
-            ]
-          }
-
-          resource "aws_iam_role" "github_actions_role" {
-            name = var.role_name
-
-            assume_role_policy = jsonencode({
-                Version = "2012-10-17"
-                Statement = [
-                {
-                    Effect = "Allow"
-                    Principal = {
-                      Federated = "arn:aws:iam::${var.aws_account_id}:oidc-provider/token.actions.githubusercontent.com"
-                    }
-                    Action = "sts:AssumeRoleWithWebIdentity"
-                    Condition = {
-                      StringLike = {
-                        # SIEMPRE LISTA, aunque haya 1 repo
-                        "token.actions.githubusercontent.com:sub" = [
-                        for repo in var.repo_names : "repo:${repo}:*"
-                        ]
-                      }
-                      StringEquals = {
-                        "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
-                      }
-                    }
-                }]
-            })
-          }
-
-
-          # Política inline dinámica
-          resource "aws_iam_role_policy" "github_policy" {
-            name = "github-actions-dynamic-policy"
-            role = aws_iam_role.github_actions_role.id
-            policy = jsonencode({
-              Version = "2012-10-17"
-              Statement = [
-                {
-                  Effect   = "Allow"
-                  Action   = var.actions
-                  Resource = "*"
-                }
-              ]
-            })
-          }
-          HCL
-
-          # tfvars con inputs
-          cat > terraform-oidc/terraform.tfvars <<TFVARS
-          aws_account_id = "${{ inputs.aws_account_id }}"
-          aws_region     = "${{ inputs.aws_region }}"
-          repo_names     = ${{ inputs.repo_names }}
-          role_name      = "${{ inputs.role_name }}"
-          actions        = ${{ inputs.actions }}
-          TFVARS
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
-      - name: terraform init
-        working-directory: terraform-oidc
-        run: terraform init -input=false
+      - name: Init Terraform
+        run: terraform init
+        working-directory: terraform/oidc
 
-      - name: terraform apply
-        working-directory: terraform-oidc
-        run: terraform apply -auto-approve -input=false
-
-      - name: Publicar salidas
-        id: set-outputs
-        shell: bash
-        run: |
-          ROLE_ARN="arn:aws:iam::${{ inputs.aws_account_id }}:role/${{ inputs.role_name }}"
-          OIDC_ARN="${{ steps.detect.outputs.oidc_arn }}"
-          echo "role_arn=${ROLE_ARN}" >> "$GITHUB_OUTPUT"
-          echo "oidc_arn=${OIDC_ARN}" >> "$GITHUB_OUTPUT"
+      - name: Apply Terraform
+        run: terraform apply -auto-approve -input=false \
+          -var="aws_account_id=${{ inputs.aws_account_id }}" \
+          -var="aws_region=${{ inputs.aws_region }}" \
+          -var="role_name=${{ inputs.role_name }}" \
+          -var='repo_names=${{ inputs.repo_names }}' \
+          -var='actions=${{ inputs.actions }}'
+        working-directory: terraform/oidc
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ inputs.aws_region }}
