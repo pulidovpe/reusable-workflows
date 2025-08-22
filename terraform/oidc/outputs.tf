@@ -1,7 +1,9 @@
-output "role_arn" {
-  value = try(data.aws_iam_role.existing_role.arn, aws_iam_role.github_actions_role[0].arn)
+output "oidc_provider_arn" {
+  description = "ARN del OIDC provider creado para GitHub Actions"
+  value       = aws_iam_openid_connect_provider.github.arn
 }
 
-output "oidc_provider_arn" {
-  value = try(data.aws_iam_openid_connect_provider.github.arn, aws_iam_openid_connect_provider.github[0].arn)
+output "github_role_arn" {
+  description = "ARN del IAM Role creado para GitHub Actions"
+  value       = aws_iam_role.github_actions_role.arn
 }

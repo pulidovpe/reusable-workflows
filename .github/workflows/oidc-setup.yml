@@ -1,23 +1,26 @@
-name: OIDC Setup
+name: Setup OIDC
 
 on:
   workflow_call:
     inputs:
       aws_account_id:
+        description: "AWS Account ID"
         required: true
         type: string
       aws_region:
+        description: "AWS Region"
         required: true
         type: string
       role_name:
+        description: "IAM Role name to create or update"
         required: true
         type: string
       repo_names:
-        description: 'Repos autorizados. Ej: ["org/repo1","org/repo2"]'
+        description: "Lista de repos autorizados para usar OIDC (ej: org/repo1,org/repo2)"
         required: true
         type: string
       actions:
-        description: 'Acciones dinámicas. Ej: ["ec2:*","s3:*"]'
+        description: "Acciones de AWS permitidas para la policy. Ejemplo: ec2:*,s3:*"
         required: true
         type: string
     secrets:
@@ -31,24 +34,38 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repo
+      # 1. Checkout del repo que llama, por si lo necesitamos
+      - name: Checkout caller repo
         uses: actions/checkout@v4
 
+      # 2. Clonar repo reusable donde vive Terraform
+      - name: Checkout reusable workflows repo
+        uses: actions/checkout@v4
+        with:
+          repository: pulidovpe/reusable-workflows
+          path: reusable
+
+      # 3. Configurar Terraform
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.8.5
 
-      - name: Init Terraform
+      # 4. Inicializar Terraform
+      - name: Terraform Init
         run: terraform init
-        working-directory: terraform/oidc
+        working-directory: ./terraform/oidc
 
-      - name: Apply Terraform
-        run: terraform apply -auto-approve -input=false \
-          -var="aws_account_id=${{ inputs.aws_account_id }}" \
-          -var="aws_region=${{ inputs.aws_region }}" \
-          -var="role_name=${{ inputs.role_name }}" \
-          -var='repo_names=${{ inputs.repo_names }}' \
-          -var='actions=${{ inputs.actions }}'
-        working-directory: terraform/oidc
+      # 5. Ejecutar Terraform Apply con variables dinámicas
+      - name: Terraform Apply
+        run: |
+          terraform apply -auto-approve -input=false \
+            -var="aws_account_id=${{ inputs.aws_account_id }}" \
+            -var="aws_region=${{ inputs.aws_region }}" \
+            -var="role_name=${{ inputs.role_name }}" \
+            -var='repo_names=${{ inputs.repo_names }}' \
+            -var='actions=${{ inputs.actions }}'
+        working-directory: ./terraform/oidc
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
