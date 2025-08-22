@@ -83,6 +83,8 @@ jobs:
           version: 2
         
       - name: Importar OIDC si ya existe
+        env:
+          AWS_REGION: ${{ inputs.aws_region }}
         run: |
           cd reusable-workflows/terraform/oidc
           OIDC_ARN="arn:aws:iam::${{ inputs.aws_account_id }}:oidc-provider/token.actions.githubusercontent.com"
@@ -91,6 +93,8 @@ jobs:
           fi
       
       - name: Importar roles existentes
+        env:
+          AWS_REGION: ${{ inputs.aws_region }}
         run: |
           cd reusable-workflows/terraform/oidc
           REPOS='${{ inputs.repo_names }}'
