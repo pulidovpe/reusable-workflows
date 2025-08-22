@@ -121,6 +121,7 @@ jobs:
       - name: Importar OIDC existente si aplica
         if: env.oidc_exists == 'true'
         run: |
+          cd reusable-workflows/terraform/oidc
           echo "Importando OIDC existente..."
           terraform import aws_iam_openid_connect_provider.github "${{ env.OIDC_ARN }}" || true
 
