@@ -10,7 +10,7 @@ terraform {
   backend "s3" {
     bucket         = "devops-aws-backend-tfstate"
     key            = "test/oidc-setup.tfstate"
-    region         = var.aws_region
+    region         = "us-east-1"
     encrypt        = true
   }
 }
