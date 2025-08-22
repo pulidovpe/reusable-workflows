@@ -93,7 +93,7 @@ jobs:
           if [ -n "$OIDC_ARN" ]; then
             echo "OIDC existente detectado: $OIDC_ARN"
             echo "oidc_exists=true" >> $GITHUB_ENV
-            echo "oidc_arn=$OIDC_ARN" >> $GITHUB_ENV
+            echo "OIDC_ARN=$OIDC_ARN" >> $GITHUB_ENV
           else
             echo "No existe OIDC, se creará uno nuevo"
             echo "oidc_exists=false" >> $GITHUB_ENV
@@ -122,7 +122,7 @@ jobs:
         if: env.oidc_exists == 'true'
         run: |
           echo "Importando OIDC existente..."
-          terraform import aws_iam_openid_connect_provider.github $OIDC_ARN || true
+          terraform import aws_iam_openid_connect_provider.github "${{ env.OIDC_ARN }}" || true
 
       - name: Importar roles existentes
         run: |
