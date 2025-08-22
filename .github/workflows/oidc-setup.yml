@@ -81,11 +81,11 @@ jobs:
           if [ "$ARN" != "None" ] && [ -n "$ARN" ]; then
             echo "Provider exists, importing..."
             terraform import -input=false \
-              -var="aws_account_id=${{ inputs.aws_account_id }}" \
-              -var="aws_region=${{ inputs.aws_region }}" \
-              -var="role_name=${{ inputs.role_name }}" \
-              -var='repo_names=${{ inputs.repo_names }}' \
-              -var='actions=${{ inputs.actions }}' \
+              -var 'aws_account_id=${{ inputs.aws_account_id }}' \
+              -var 'aws_region=${{ inputs.aws_region }}' \
+              -var 'role_name=${{ inputs.role_name }}' \
+              -var 'repo_names=${{ inputs.repo_names }}' \
+              -var 'actions=${{ inputs.actions }}' \
               aws_iam_openid_connect_provider.github $ARN
           else
             echo "Provider does not exist, will create."
@@ -98,14 +98,15 @@ jobs:
         run: |
           cd reusable-workflows/terraform/oidc
           ROLE_ARN=$(aws iam get-role --role-name ${{ inputs.role_name }} --query Role.Arn --output text 2>/dev/null || true)
+          echo "role_arn=$ROLE_ARN" >> $GITHUB_OUTPUT  # Agregado para exponer output y habilitar el if en policy
           if [ -n "$ROLE_ARN" ]; then
             echo "Role exists, importing..."
             terraform import -input=false \
-              -var="aws_account_id=${{ inputs.aws_account_id }}" \
-              -var="aws_region=${{ inputs.aws_region }}" \
-              -var="role_name=${{ inputs.role_name }}" \
-              -var='repo_names=${{ inputs.repo_names }}' \
-              -var='actions=${{ inputs.actions }}' \
+              -var 'aws_account_id=${{ inputs.aws_account_id }}' \
+              -var 'aws_region=${{ inputs.aws_region }}' \
+              -var 'role_name=${{ inputs.role_name }}' \
+              -var 'repo_names=${{ inputs.repo_names }}' \
+              -var 'actions=${{ inputs.actions }}' \
               aws_iam_role.github_actions_role ${{ inputs.role_name }}
           else
             echo "Role does not exist, will create."
@@ -120,11 +121,11 @@ jobs:
           POLICY_NAME="${{ inputs.role_name }}-policy"
           if aws iam get-role-policy --role-name ${{ inputs.role_name }} --policy-name $POLICY_NAME >/dev/null 2>&1; then
             terraform import -input=false \
-              -var="aws_account_id=${{ inputs.aws_account_id }}" \
-              -var="aws_region=${{ inputs.aws_region }}" \
-              -var="role_name=${{ inputs.role_name }}" \
-              -var='repo_names=${{ inputs.repo_names }}' \
-              -var='actions=${{ inputs.actions }}' \
+              -var 'aws_account_id=${{ inputs.aws_account_id }}' \
+              -var 'aws_region=${{ inputs.aws_region }}' \
+              -var 'role_name=${{ inputs.role_name }}' \
+              -var 'repo_names=${{ inputs.repo_names }}' \
+              -var 'actions=${{ inputs.actions }}' \
               aws_iam_role_policy.github_policy ${{ inputs.role_name }}:$POLICY_NAME
           fi
 
@@ -133,11 +134,11 @@ jobs:
         run: |
           cd reusable-workflows/terraform/oidc
           terraform apply -auto-approve -input=false \
-            -var="aws_account_id=${{ inputs.aws_account_id }}" \
-            -var="aws_region=${{ inputs.aws_region }}" \
-            -var="role_name=${{ inputs.role_name }}" \
-            -var="repo_names=${{ inputs.repo_names }}" \
-            -var="actions=${{ inputs.actions }}"
+            -var 'aws_account_id=${{ inputs.aws_account_id }}' \
+            -var 'aws_region=${{ inputs.aws_region }}' \
+            -var 'role_name=${{ inputs.role_name }}' \
+            -var 'repo_names=${{ inputs.repo_names }}' \
+            -var 'actions=${{ inputs.actions }}'
 
       # 9. Capturar Outputs de Terraform
       - name: Get Terraform Outputs
