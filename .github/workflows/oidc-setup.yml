@@ -82,7 +82,7 @@ jobs:
         with:
           version: 2
         
-      - name: Importar OIDC si ya existe
+      - name: Detectar OIDC si ya existe
         run: |
           set -e
           cd reusable-workflows/terraform/oidc
@@ -92,27 +92,13 @@ jobs:
 
           if [ -n "$OIDC_ARN" ]; then
             echo "OIDC existente detectado: $OIDC_ARN"
+            echo "oidc_exists=true" >> $GITHUB_ENV
             echo "oidc_arn=$OIDC_ARN" >> $GITHUB_ENV
-            echo "Importando OIDC existente..."
-            terraform import aws_iam_openid_connect_provider.github $OIDC_ARN || true
           else
             echo "No existe OIDC, se creará uno nuevo"
             echo "oidc_exists=false" >> $GITHUB_ENV
           fi
-      
-      - name: Importar roles existentes
-        run: |
-          cd reusable-workflows/terraform/oidc
-          REPOS='${{ inputs.repo_names }}'
-          PREFIX='${{ inputs.role_name_prefix }}'
-          echo "$REPOS" | jq -r '.[]' | while read -r repo; do
-            role_name="${PREFIX}-$(echo "$repo" | tr '/' '-')"
-            addr="aws_iam_role.github_actions_roles[\"$repo\"]"
-            if aws iam get-role --role-name "$role_name" --region "${{ inputs.aws_region }}" >/dev/null 2>&1; then
-              terraform import "$addr" "$role_name" || true
-            fi
-          done
-
+          
       # 6. Generar dinámicamente el archivo terraform.auto.tfvars.json
       - name: Generar archivo tfvars dinámico
         run: |
@@ -131,6 +117,25 @@ jobs:
               policy_actions: $policy_actions,
               oidc_actions: $oidc_actions
             }' > terraform.auto.tfvars.json
+      
+      - name: Importar OIDC existente si aplica
+        if: env.oidc_exists == 'true'
+        run: |
+          echo "Importando OIDC existente..."
+          terraform import aws_iam_openid_connect_provider.github $OIDC_ARN || true
+
+      - name: Importar roles existentes
+        run: |
+          cd reusable-workflows/terraform/oidc
+          REPOS='${{ inputs.repo_names }}'
+          PREFIX='${{ inputs.role_name_prefix }}'
+          echo "$REPOS" | jq -r '.[]' | while read -r repo; do
+            role_name="${PREFIX}-$(echo "$repo" | tr '/' '-')"
+            addr="aws_iam_role.github_actions_roles[\"$repo\"]"
+            if aws iam get-role --role-name "$role_name" --region "${{ inputs.aws_region }}" >/dev/null 2>&1; then
+              terraform import "$addr" "$role_name" || true
+            fi
+          done
 
       # 7. Terraform Plan
       - name: Terraform Plan
