@@ -28,10 +28,20 @@ on:
         required: true
       AWS_SECRET_ACCESS_KEY:
         required: true
+    outputs:
+      role_arn:
+        description: "ARN del IAM Role creado/actualizado"
+        value: ${{ jobs.setup-oidc.outputs.github_role_arn }}
+      oidc_provider_arn:
+        description: "ARN del OIDC Provider"
+        value: ${{ jobs.setup-oidc.outputs.oidc_provider_arn }}
 
 jobs:
   setup-oidc:
     runs-on: ubuntu-latest
+    outputs:
+      github_role_arn: ${{ steps.tf-outputs.outputs.github_role_arn }}
+      oidc_provider_arn: ${{ steps.tf-outputs.outputs.oidc_provider_arn }}
 
     steps:
       # 1. Checkout del repo que llama, por si lo necesitamos
@@ -46,28 +56,75 @@ jobs:
           ref: main
           path: reusable-workflows
 
-      # 3. Configurar Terraform
+      # 3. Configurar credenciales AWS (para checks e imports)
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ inputs.aws_region }}
+
+      # 4. Configurar Terraform
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.8.5
 
-      # 4. Inicializar Terraform
-      - name: Terraform Init
-        run: terraform init
-        working-directory: reusable-workflows/terraform/oidc
+      # 5. Check e Import OIDC Provider si existe
+      - name: Check and Import OIDC Provider
+        id: oidc-provider
+        shell: bash
+        run: |
+          cd reusable-workflows/terraform/oidc
+          terraform init -input=false
+          ARN=$(aws iam list-open-id-connect-providers --query "OpenIDConnectProviderList[?ClientIDList.contains(@, 'sts.amazonaws.com') && ends_with(Arn, ':oidc-provider/token.actions.githubusercontent.com')].Arn | [0]" --output text)
+          if [ "$ARN" != "None" ] && [ -n "$ARN" ]; then
+            echo "Provider exists, importing..."
+            terraform import -input=false aws_iam_openid_connect_provider.github $ARN
+          else
+            echo "Provider does not exist, will create."
+          fi
 
-      # 5. Ejecutar Terraform Apply con variables dinámicas
+      # 6. Check e Import IAM Role si existe
+      - name: Check and Import IAM Role
+        id: iam-role
+        shell: bash
+        run: |
+          cd reusable-workflows/terraform/oidc
+          ROLE_ARN=$(aws iam get-role --role-name ${{ inputs.role_name }} --query Role.Arn --output text 2>/dev/null || true)
+          if [ -n "$ROLE_ARN" ]; then
+            echo "Role exists, importing..."
+            terraform import -input=false aws_iam_role.github_actions_role ${{ inputs.role_name }}
+          else
+            echo "Role does not exist, will create."
+          fi
+
+      # 7. Check e Import IAM Policy si existe (solo si rol existe)
+      - name: Check and Import IAM Policy
+        if: steps.iam-role.outputs.role_arn != ''
+        shell: bash
+        run: |
+          cd reusable-workflows/terraform/oidc
+          POLICY_NAME="${{ inputs.role_name }}-policy"
+          if aws iam get-role-policy --role-name ${{ inputs.role_name }} --policy-name $POLICY_NAME >/dev/null 2>&1; then
+            terraform import -input=false aws_iam_role_policy.github_policy ${{ inputs.role_name }}:$POLICY_NAME
+          fi
+
+      # 8. Ejecutar Terraform Apply con variables dinámicas
       - name: Terraform Apply
         run: |
+          cd reusable-workflows/terraform/oidc
           terraform apply -auto-approve -input=false \
             -var="aws_account_id=${{ inputs.aws_account_id }}" \
             -var="aws_region=${{ inputs.aws_region }}" \
             -var="role_name=${{ inputs.role_name }}" \
-            -var='repo_names=${{ inputs.repo_names }}' \
-            -var='actions=${{ inputs.actions }}'
-        working-directory: reusable-workflows/terraform/oidc
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_REGION: ${{ inputs.aws_region }}
+            -var="repo_names=${{ inputs.repo_names }}" \
+            -var="actions=${{ inputs.actions }}"
+
+      # 9. Capturar Outputs de Terraform
+      - name: Get Terraform Outputs
+        id: tf-outputs
+        run: |
+          cd reusable-workflows/terraform/oidc
+          echo "oidc_provider_arn=$(terraform output -raw oidc_provider_arn)" >> $GITHUB_OUTPUT
+          echo "github_role_arn=$(terraform output -raw github_role_arn)" >> $GITHUB_OUTPUT
