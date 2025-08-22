@@ -84,18 +84,23 @@ jobs:
         
       - name: Importar OIDC si ya existe
         env:
-          AWS_REGION: ${{ inputs.aws_region }}
+          AWS_DEBUG: true
+          TF_LOG: DEBUG
         run: |
-          cd reusable-workflows/terraform/oidc
+          set -euo pipefail
           OIDC_ARN="arn:aws:iam::${{ inputs.aws_account_id }}:oidc-provider/token.actions.githubusercontent.com"
+          cd reusable-workflows/terraform/oidc
+          echo "🔍 Verificando si el OIDC Provider ya existe en AWS..."
           if aws iam get-open-id-connect-provider --open-id-connect-provider-arn "$OIDC_ARN" >/dev/null 2>&1; then
+            echo "✅ OIDC existente, importando en Terraform..."
             terraform import aws_iam_openid_connect_provider.github "$OIDC_ARN" || true
+          else
+            echo "ℹ️ OIDC no encontrado, será creado en Terraform."
           fi
       
       - name: Importar roles existentes
-        env:
-          AWS_REGION: ${{ inputs.aws_region }}
         run: |
+          set -euo pipefail
           cd reusable-workflows/terraform/oidc
           REPOS='${{ inputs.repo_names }}'
           PREFIX='${{ inputs.role_name_prefix }}'
