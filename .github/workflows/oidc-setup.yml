@@ -3,47 +3,44 @@ name: Setup OIDC
 on:
   workflow_call:
     inputs:
+      aws_account_id:
+        description: "AWS Account ID"
+        required: true
+        type: string
+      aws_region:
+        description: "AWS region"
+        required: true
+        type: string
       role_name_prefix:
         description: "Prefijo para los roles IAM"
         required: true
         type: string
       repo_names:
-        description: "Lista de repos autorizados para usar OIDC"
+        description: 'JSON list de repos autorizados'
         required: true
         type: string
       oidc_actions:
-        description: "Acciones permitidas para OIDC (branches/tags)"
+        description: "Patrón de OIDC"
         required: false
-        type: string
         default: "*"
-      policy_actions:
-        description: "Acciones AWS permitidas por la política"
-        required: false
         type: string
-        default: '["s3:*","ec2:*"]'
-      aws_region:
-        description: "AWS region"
-        required: true
+      policy_actions:
+        description: "Lista de acciones para la política IAM"
+        required: false
+        default: '["ec2:*"]'
         type: string
     secrets:
       aws_access_key_id:
         required: true
       aws_secret_access_key:
         required: true
-    outputs:
-      role_arn:
-        description: "ARN del IAM Role creado/actualizado"
-        value: ${{ jobs.setup-oidc.outputs.github_role_arn }}
-      oidc_provider_arn:
-        description: "ARN del OIDC Provider"
-        value: ${{ jobs.setup-oidc.outputs.oidc_provider_arn }}
 
 jobs:
   setup-oidc:
     runs-on: ubuntu-latest
     outputs:
-      github_role_arn: ${{ steps.tf-outputs.outputs.github_role_arn }}
-      oidc_provider_arn: ${{ steps.tf-outputs.outputs.oidc_provider_arn }}
+      oidc_provider_arn: ${{ steps.tf-output.outputs.oidc_provider_arn }}
+      github_roles_arn: ${{ steps.tf-output.outputs.github_roles_arn }}
 
     steps:
       # 1. Checkout del repositorio donde está la config de Terraform
@@ -78,26 +75,54 @@ jobs:
           cd reusable-workflows/terraform/oidc
           terraform init -input=false
 
-      # 5. Terraform Plan (debug)
+      # 5. Usar bash y aws cli para detectar proveedor y rol existente
+      - name: Install-aws-cli-action
+        id: install-aws-cli
+        uses: unfor19/install-aws-cli-action@master
+        with:
+          version: 2
+        
+      - name: Importar OIDC si ya existe
+        run: |
+          cd reusable-workflows/terraform/oidc
+          OIDC_ARN="arn:aws:iam::${{ inputs.aws_account_id }}:oidc-provider/token.actions.githubusercontent.com"
+          if aws iam get-open-id-connect-provider --open-id-connect-provider-arn "$OIDC_ARN" >/dev/null 2>&1; then
+            terraform import aws_iam_openid_connect_provider.github "$OIDC_ARN" || true
+          fi
+      
+      - name: Importar roles existentes
+        run: |
+          cd reusable-workflows/terraform/oidc
+          REPOS='${{ inputs.repo_names }}'
+          PREFIX='${{ inputs.role_name_prefix }}'
+          echo "$REPOS" | jq -r '.[]' | while read -r repo; do
+            role_name="${PREFIX}-$(echo "$repo" | tr '/' '-')"
+            addr="aws_iam_role.github_actions_roles[\"$repo\"]"
+            if aws iam get-role --role-name "$role_name" >/dev/null 2>&1; then
+              terraform import "$addr" "$role_name" || true
+            fi
+          done
+
+      # 6. Terraform Plan (debug)
       - name: Terraform Plan
         run: |
           cd reusable-workflows/terraform/oidc
           terraform plan \
-            -var='aws_region=${{ inputs.aws_region }}' \
-            -var='role_name_prefix=${{ inputs.role_name_prefix }}' \
+            -var="aws_region=${{ inputs.aws_region }}" \
+            -var="role_name_prefix=${{ inputs.role_name_prefix }}" \
             -var='repo_names=${{ fromJSON(inputs.repo_names) }}' \
-            -var='oidc_actions=${{ inputs.oidc_actions }}' \
+            -var="oidc_actions=${{ inputs.oidc_actions }}" \
             -var='policy_actions=${{ fromJSON(inputs.policy_actions) }}'
 
       # 6. Aplicar cambios
       - name: Terraform Apply
         run: |
           cd reusable-workflows/terraform/oidc
-          terraform apply -auto-approve \
-            -var='aws_region=${{ inputs.aws_region }}' \
-            -var='role_name_prefix=${{ inputs.role_name_prefix }}' \
+          terraform apply -auto-approve -input=false \
+            -var="aws_region=${{ inputs.aws_region }}" \
+            -var="role_name_prefix=${{ inputs.role_name_prefix }}" \
             -var='repo_names=${{ fromJSON(inputs.repo_names) }}' \
-            -var='oidc_actions=${{ inputs.oidc_actions }}' \
+            -var="oidc_actions=${{ inputs.oidc_actions }}" \
             -var='policy_actions=${{ fromJSON(inputs.policy_actions) }}'
 
       # 7. Obtener outputs y pasarlos al entorno
@@ -106,4 +131,4 @@ jobs:
         run: |
           cd reusable-workflows/terraform/oidc
           echo "oidc_provider_arn=$(terraform output -raw oidc_provider_arn)" >> $GITHUB_OUTPUT
-          echo "github_role_arn=$(terraform output -raw github_role_arn)" >> $GITHUB_OUTPUT
+          echo "github_roles_arn=$(terraform output -json github_roles_arn)" >> $GITHUB_OUTPUT

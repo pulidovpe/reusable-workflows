@@ -18,24 +18,17 @@ provider "aws" {
   region = var.aws_region
 }
 
-# 1. Intentar buscar el OIDC Provider existente
-data "aws_iam_openid_connect_provider" "github" {
-  url = "https://token.actions.githubusercontent.com"
-}
-
-# 2. Crear un OIDC Provider solo si no existe
+# 1. Proveedor OIDC (se crea si no existe, pero se importa antes en oidc-setup.yml)
 resource "aws_iam_openid_connect_provider" "github" {
-  count            = length(data.aws_iam_openid_connect_provider.github.*.arn) == 0 ? 1 : 0
-  url              = "https://token.actions.githubusercontent.com"
-  client_id_list   = ["sts.amazonaws.com"]
+  url             = "https://token.actions.githubusercontent.com"
+  client_id_list  = ["sts.amazonaws.com"]
   thumbprint_list = ["6938fd4d98bab03faadb97b34396831e3780aea1", "1c58a3a8518e8759bf075b76b750d4f2df264fcd"]
 }
 
-# 3. # Crear un rol por cada repo
+# 2. Roles dinámicos por repo
 resource "aws_iam_role" "github_actions_roles" {
   for_each = toset(var.repo_names)
-
-  name = "${var.role_name_prefix}-${replace(each.value, "/", "-")}"
+  name     = "${var.role_name_prefix}-${replace(each.value, "/", "-")}"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -43,10 +36,7 @@ resource "aws_iam_role" "github_actions_roles" {
       {
         Effect = "Allow"
         Principal = {
-          Federated = try(
-            data.aws_iam_openid_connect_provider.github.arn,
-            aws_iam_openid_connect_provider.github[0].arn
-          )
+          Federated = aws_iam_openid_connect_provider.github.arn
         }
         Action = "sts:AssumeRoleWithWebIdentity"
         Condition = {
@@ -59,13 +49,10 @@ resource "aws_iam_role" "github_actions_roles" {
   })
 }
 
-# 4. Crear política personalizada por cada rol
-resource "aws_iam_role_policy" "github_policy" {
+# 3. Políticas dinámicas por repo y role
+resource "aws_iam_policy" "github_actions_policies" {
   for_each = aws_iam_role.github_actions_roles
-
-  name = "oidc-github-actions-role-policy-${replace(each.key, "/", "-")}"
-  role = each.value.name
-
+  name     = "${each.key}-policy"
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -76,4 +63,10 @@ resource "aws_iam_role_policy" "github_policy" {
       }
     ]
   })
+}
+
+resource "aws_iam_role_policy_attachment" "github_actions_attach" {
+  for_each   = aws_iam_role.github_actions_roles
+  role       = each.value.name
+  policy_arn = aws_iam_policy.github_actions_policies[each.key].arn
 }

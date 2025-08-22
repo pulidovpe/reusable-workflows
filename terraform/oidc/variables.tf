@@ -1,31 +1,26 @@
-variable "aws_account_id" {
-  type        = string
-  description = "AWS Account ID"
-}
-
 variable "aws_region" {
   type        = string
-  description = "AWS Region"
+  description = "AWS region"
 }
 
 variable "role_name_prefix" {
   type        = string
-  default     = "oidc-github-actions-role"
+  description = "Prefijo para los roles IAM"
 }
 
 variable "repo_names" {
   type        = list(string)
-  description = "Lista de repos permitidos"
+  description = "Lista de repos autorizados"
 }
 
 variable "oidc_actions" {
   type        = string
-  description = "Acciones permitidas para OIDC en GitHub (branch, tag, etc.)"
-  default     = "*" # Puede ser "ref:refs/heads/main" si lo quieres restringir
+  default     = "*"
+  description = "Patrón de OIDC (e.g. ref:refs/heads/main)"
 }
 
 variable "policy_actions" {
   type        = list(string)
-  description = "Lista de acciones AWS que la política debe permitir"
-  default     = ["s3:*", "ec2:*"]
+  default     = ["ec2:*"]
+  description = "Acciones permitidas en la política IAM"
 }
