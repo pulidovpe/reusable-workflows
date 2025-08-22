@@ -1,24 +1,25 @@
 variable "aws_account_id" {
-  description = "ID de la cuenta AWS donde se configurará el OIDC y el rol"
   type        = string
+  description = "AWS Account ID"
 }
 
 variable "aws_region" {
-  description = "Región AWS donde se desplegarán los recursos"
   type        = string
+  description = "AWS region"
 }
 
 variable "role_name" {
-  description = "Nombre del IAM Role a crear o actualizar"
   type        = string
+  description = "Role name for GitHub OIDC"
 }
 
 variable "repo_names" {
-  description = "Lista de repos autorizados a asumir el rol vía OIDC"
   type        = list(string)
+  description = "List of GitHub repositories allowed to assume the role"
 }
 
 variable "actions" {
-  description = "Lista de permisos de AWS permitidos en la policy"
   type        = list(string)
+  description = "AWS actions allowed in the policy"
+  default     = ["ec2:*", "s3:*"]
 }

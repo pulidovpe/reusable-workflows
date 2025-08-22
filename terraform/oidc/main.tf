@@ -1,13 +1,3 @@
-variable "aws_account_id" {}
-variable "aws_region" {}
-variable "role_name" {}
-variable "repo_names" {
-  type = list(string)
-}
-variable "actions" {
-  type = list(string)
-}
-
 provider "aws" {
   region = var.aws_region
 }
