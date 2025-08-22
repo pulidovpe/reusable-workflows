@@ -83,31 +83,24 @@ jobs:
           version: 2
         
       - name: Importar OIDC si ya existe
-        env:
-          AWS_DEBUG: true
-          TF_LOG: DEBUG
         run: |
-          set -euo pipefail
-          OIDC_ARN="arn:aws:iam::${{ inputs.aws_account_id }}:oidc-provider/token.actions.githubusercontent.com"
           cd reusable-workflows/terraform/oidc
-          echo "🔍 Verificando si el OIDC Provider ya existe en AWS..."
-          if aws iam get-open-id-connect-provider --open-id-connect-provider-arn "$OIDC_ARN" >/dev/null 2>&1; then
-            echo "✅ OIDC existente, importando en Terraform..."
+          OIDC_ARN="arn:aws:iam::${{ inputs.aws_account_id }}:oidc-provider/token.actions.githubusercontent.com"
+          
+          aws iam get-open-id-connect-provider \
+            --open-id-connect-provider-arn "$OIDC_ARN" \
+            --region "${{ inputs.aws_region }}" >/dev/null 2>&1 || \
             terraform import aws_iam_openid_connect_provider.github "$OIDC_ARN" || true
-          else
-            echo "ℹ️ OIDC no encontrado, será creado en Terraform."
-          fi
       
       - name: Importar roles existentes
         run: |
-          set -euo pipefail
           cd reusable-workflows/terraform/oidc
           REPOS='${{ inputs.repo_names }}'
           PREFIX='${{ inputs.role_name_prefix }}'
           echo "$REPOS" | jq -r '.[]' | while read -r repo; do
             role_name="${PREFIX}-$(echo "$repo" | tr '/' '-')"
             addr="aws_iam_role.github_actions_roles[\"$repo\"]"
-            if aws iam get-role --role-name "$role_name" >/dev/null 2>&1; then
+            if aws iam get-role --role-name "$role_name" --region "${{ inputs.aws_region }}" >/dev/null 2>&1; then
               terraform import "$addr" "$role_name" || true
             fi
           done
