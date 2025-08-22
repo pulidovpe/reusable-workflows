@@ -14,8 +14,7 @@ variable "repo_names" {
 }
 
 variable "oidc_actions" {
-  type        = string
-  default     = "*"
+  type = list(string)
   description = "Patrón de OIDC (e.g. ref:refs/heads/main)"
 }
 
