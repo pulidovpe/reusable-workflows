@@ -52,7 +52,8 @@ resource "aws_iam_role" "github_actions_roles" {
 # 3. Políticas dinámicas por repo y role
 resource "aws_iam_policy" "github_actions_policies" {
   for_each = aws_iam_role.github_actions_roles
-  name     = "${each.key}-policy"
+  # Sanitizamos el nombre para eliminar caracteres no válidos
+  name = "${replace(each.key, "/", "-")}-policy"
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
