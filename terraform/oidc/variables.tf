@@ -29,8 +29,3 @@ variable "policy_actions" {
   type        = map(list(string))
 }
 
-# Validación: todos los repos deben tener una entrada en policy_actions
-validation {
-  condition     = alltrue([for r in var.repo_names : contains(keys(var.policy_actions), r)])
-  error_message = "Cada repo de repo_names debe existir como clave en policy_actions."
-}
