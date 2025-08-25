@@ -11,8 +11,8 @@ on:
         description: "AWS region"
         required: true
         type: string
-      role_name_prefix:
-        description: "Prefijo para los roles IAM"
+      role_name:
+        description: "Nombre para el roles IAM"
         required: true
         type: string
       repo_names:
@@ -107,18 +107,18 @@ jobs:
           # Aseguramos que los valores sean JSON válidos
           jq -n \
             --arg aws_region "${{ inputs.aws_region }}" \
-            --arg role_name_prefix "${{ inputs.role_name_prefix }}" \
+            --arg role_name "${{ inputs.role_name }}" \
             --argjson repo_names '${{ inputs.repo_names }}' \
             --argjson policy_actions '${{ inputs.policy_actions }}' \
             --argjson oidc_actions '${{ inputs.oidc_actions }}' \
             '{
               aws_region: $aws_region,
-              role_name_prefix: $role_name_prefix,
+              role_name: $role_name,
               repo_names: $repo_names,
               policy_actions: $policy_actions,
               oidc_actions: $oidc_actions
             }' > terraform.auto.tfvars.json
-            
+                        
             cat terraform.auto.tfvars.json
       
       - name: Importar OIDC existente si aplica
@@ -127,19 +127,6 @@ jobs:
           cd reusable-workflows/terraform/oidc
           echo "Importando OIDC existente..."
           terraform import aws_iam_openid_connect_provider.github "${{ env.OIDC_ARN }}" || true
-
-      - name: Importar roles existentes
-        run: |
-          cd reusable-workflows/terraform/oidc
-          REPOS='${{ inputs.repo_names }}'
-          PREFIX='${{ inputs.role_name_prefix }}'
-          echo "$REPOS" | jq -r '.[]' | while read -r repo; do
-            role_name="${PREFIX}-$(echo "$repo" | tr '/' '-')"
-            addr="aws_iam_role.github_actions_roles[\"$repo\"]"
-            if aws iam get-role --role-name "$role_name" --region "${{ inputs.aws_region }}" >/dev/null 2>&1; then
-              terraform import "$addr" "$role_name" || true
-            fi
-          done
 
       - name: Mostrar estado tras importar
         if: env.OIDC_EXISTS == 'true'

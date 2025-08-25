@@ -1,5 +1,6 @@
 output "oidc_provider_arn" {
-  value = aws_iam_openid_connect_provider.github.arn
+  description = "ARN del OIDC Provider de GitHub"
+  value       = aws_iam_openid_connect_provider.github.arn
 }
 
 output "github_role_arn" {

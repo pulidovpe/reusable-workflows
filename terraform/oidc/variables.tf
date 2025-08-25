@@ -1,25 +1,36 @@
 variable "aws_region" {
-  type        = string
   description = "AWS region"
-}
-
-variable "role_name_prefix" {
-  description = "Prefijo del rol"
   type        = string
-  default     = "reusable-workflows-role"
 }
 
+# 🔧 Un rol compartido (nuevo input). Si ya existe, lo importamos en el workflow.
+variable "role_name" {
+  description = "Nombre del rol IAM compartido para todos los repos"
+  type        = string
+  default     = "workflows-role-shared"
+}
+
+# Repos autorizados (owner/repo)
 variable "repo_names" {
+  description = "Lista de repositorios (owner/repo) que podrán asumir el rol"
   type        = list(string)
-  description = "Lista de repos autorizados"
 }
 
+# Acciones del OIDC (sufijo del sub). Normalmente sólo "*".
 variable "oidc_actions" {
-  type = list(string)
-  description = "Patrón de OIDC (e.g. ref:refs/heads/main)"
+  description = "Lista de acciones permitidas para el sub del OIDC (por repo)"
+  type        = list(string)
+  default     = ["*"]
 }
 
+# Mapa repo -> lista de acciones IAM para su política administrada
 variable "policy_actions" {
-  description = "Acciones por repo"
+  description = "Mapa repo -> lista de acciones IAM a permitir en la política de ese repo"
   type        = map(list(string))
+}
+
+# Validación: todos los repos deben tener una entrada en policy_actions
+validation {
+  condition     = alltrue([for r in var.repo_names : contains(keys(var.policy_actions), r)])
+  error_message = "Cada repo de repo_names debe existir como clave en policy_actions."
 }

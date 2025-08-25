@@ -31,44 +31,53 @@ resource "aws_iam_role" "github_actions_role" {
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [
-      for repo in var.repo_names : {
-        Effect    = "Allow"
-        Principal = {
-          Federated = aws_iam_openid_connect_provider.github.arn
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Federated = aws_iam_openid_connect_provider.github.arn
+      }
+      Action = "sts:AssumeRoleWithWebIdentity"
+      Condition = {
+        StringEquals = {
+          "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
         }
-        Action = "sts:AssumeRoleWithWebIdentity"
-        Condition = {
-          StringLike = {
-            "token.actions.githubusercontent.com:sub" = "repo:${repo}:*"
-          }
+        StringLike = {
+          # una entrada por repo, ej: repo:owner/repo:*
+          "token.actions.githubusercontent.com:sub" = [
+            for repo in var.repo_names : "repo:${repo}:*"
+          ]
         }
       }
-    ]
+    }]
   })
 }
 
 # Crear políticas dinámicamente
 resource "aws_iam_policy" "github_actions_policies" {
-  for_each = var.policy_actions
+  for_each = var.policy_actions  # <-- mapa { "owner/repo" = ["accion1","accion2", ...] }
 
-  name   = "${replace(each.key, "/", "-")}-policy"
-  path   = "/"
+  name = "${replace(each.key, "/", "-")}-policy"
+  path = "/"
+
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
         Effect   = "Allow"
-        Action   = each.value
+        Action   = each.value     # <-- acciones específicas por repo
         Resource = "*"
       }
     ]
   })
 }
 
+
 # Asociar políticas a roles
 resource "aws_iam_role_policy_attachment" "github_actions_attach" {
-  for_each   = aws_iam_policy.github_actions_policies
+  # 🔧 CLAVE: iteramos sobre el mapa de entrada, no sobre el recurso
+  for_each   = var.policy_actions
+
   role       = aws_iam_role.github_actions_role.name
-  policy_arn = each.value.arn
+  policy_arn = aws_iam_policy.github_actions_policies[each.key].arn
 }
+
