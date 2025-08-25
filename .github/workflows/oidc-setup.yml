@@ -41,7 +41,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       oidc_provider_arn: ${{ steps.tf-output.outputs.oidc_provider_arn }}
-      github_roles_arn: ${{ steps.tf-output.outputs.github_roles_arn }}
+      github_role_arn: ${{ steps.tf-output.outputs.github_role_arn }}
 
     steps:
       # 1. Checkout del repositorio donde está la config de Terraform
@@ -150,4 +150,4 @@ jobs:
         run: |
           cd reusable-workflows/terraform/oidc
           echo "oidc_provider_arn=$(terraform output -raw oidc_provider_arn)" >> $GITHUB_OUTPUT
-          echo "github_roles_arn=$(terraform output -json github_roles_arn)" >> $GITHUB_OUTPUT
+          echo "github_role_arn=$(terraform output -json github_role_arn)" >> $GITHUB_OUTPUT
