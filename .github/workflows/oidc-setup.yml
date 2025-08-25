@@ -69,19 +69,19 @@ jobs:
         with:
           terraform_version: 1.8.5
 
-      # 4. Inicializar Terraform con backend remoto
-      - name: Terraform Init
-        run:  |
-          cd reusable-workflows/terraform/oidc
-          terraform init -input=false
-
-      # 5. Usar bash y aws cli para detectar proveedor y rol existente
+      # 4. Usar bash y aws cli para detectar proveedor y rol existente
       - name: Install-aws-cli-action
         id: install-aws-cli
         uses: unfor19/install-aws-cli-action@master
         with:
           version: 2
-        
+            
+      # 5. Inicializar Terraform con backend remoto
+      - name: Terraform Init
+        run:  |
+          cd reusable-workflows/terraform/oidc
+          terraform init -input=false
+          
       - name: Detectar OIDC si ya existe
         run: |
           set -e
@@ -117,6 +117,8 @@ jobs:
               policy_actions: $policy_actions,
               oidc_actions: $oidc_actions
             }' > terraform.auto.tfvars.json
+            
+            cat terraform.auto.tfvars.json
       
       - name: Importar OIDC existente si aplica
         if: env.oidc_exists == 'true'
@@ -137,6 +139,10 @@ jobs:
               terraform import "$addr" "$role_name" || true
             fi
           done
+
+      - name: Mostrar estado tras importar
+        if: env.OIDC_EXISTS == 'true'
+        run: terraform state list || echo "Estado vacío"
 
       # 7. Terraform Plan
       - name: Terraform Plan
