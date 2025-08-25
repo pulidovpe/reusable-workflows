@@ -69,7 +69,8 @@ resource "aws_iam_policy" "github_actions_policies" {
 }
 
 resource "aws_iam_role_policy_attachment" "github_actions_attach" {
-  for_each   = aws_iam_role.github_actions_roles
-  role       = each.value.name
-  policy_arn = aws_iam_policy.github_actions_policies[each.key].arn
+  for_each   = toset(var.repo_names)
+
+  role       = aws_iam_role.github_actions_roles[each.value].name
+  policy_arn = aws_iam_policy.github_actions_policies[each.value].arn
 }
