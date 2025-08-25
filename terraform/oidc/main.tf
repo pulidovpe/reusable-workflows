@@ -61,7 +61,7 @@ resource "aws_iam_policy" "github_actions_policies" {
     Statement = [
       {
         Effect   = "Allow"
-        Action   = var.policy_actions
+        Action   = var.policy_actions[each.key]
         Resource = "*"
       }
     ]

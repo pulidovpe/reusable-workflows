@@ -19,7 +19,6 @@ variable "oidc_actions" {
 }
 
 variable "policy_actions" {
-  type        = list(string)
-  default     = ["ec2:*"]
-  description = "Acciones permitidas en la política IAM"
+  description = "Acciones por repo"
+  type        = map(list(string))
 }
