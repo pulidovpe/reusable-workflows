@@ -25,10 +25,11 @@ on:
         default: "*"
         type: string
       policy_actions:
-        description: "Lista de acciones para la política IAM"
+        description: "Mapa de acciones para la política IAM por repositorio"
         required: false
-        default: '["ec2:*"]'
+        default: '{}'
         type: string
+
     secrets:
       aws_access_key_id:
         required: true
