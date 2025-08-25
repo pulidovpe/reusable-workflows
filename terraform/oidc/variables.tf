@@ -4,8 +4,9 @@ variable "aws_region" {
 }
 
 variable "role_name_prefix" {
+  description = "Prefijo del rol"
   type        = string
-  description = "Prefijo para los roles IAM"
+  default     = "reusable-workflows-role"
 }
 
 variable "repo_names" {

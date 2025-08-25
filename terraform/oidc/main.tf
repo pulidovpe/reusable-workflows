@@ -26,20 +26,13 @@ resource "aws_iam_openid_connect_provider" "github" {
 }
 
 # 2. Roles dinámicos por repo
-locals {
-  sanitized_repos = { for repo in var.repo_names : replace(repo, "/", "-") => repo }
-}
-
-# Crear roles dinámicamente
-resource "aws_iam_role" "github_actions_roles" {
-  for_each = local.sanitized_repos
-
-  name = "${var.role_name_prefix}-${each.key}"
+resource "aws_iam_role" "github_actions_role" {
+  name = "${var.role_name_prefix}-shared"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
-      {
+      for repo in var.repo_names : {
         Effect    = "Allow"
         Principal = {
           Federated = aws_iam_openid_connect_provider.github.arn
@@ -47,7 +40,7 @@ resource "aws_iam_role" "github_actions_roles" {
         Action = "sts:AssumeRoleWithWebIdentity"
         Condition = {
           StringLike = {
-            "token.actions.githubusercontent.com:sub" = "repo:${each.value}:*"
+            "token.actions.githubusercontent.com:sub" = "repo:${repo}:*"
           }
         }
       }
@@ -57,16 +50,16 @@ resource "aws_iam_role" "github_actions_roles" {
 
 # Crear políticas dinámicamente
 resource "aws_iam_policy" "github_actions_policies" {
-  for_each = local.sanitized_repos
+  for_each = var.policy_actions
 
-  name   = "${each.key}-policy"
+  name   = "${replace(each.key, "/", "-")}-policy"
   path   = "/"
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
         Effect   = "Allow"
-        Action   = lookup(var.policy_actions, each.value, ["sts:AssumeRole"])
+        Action   = each.value
         Resource = "*"
       }
     ]
@@ -75,7 +68,7 @@ resource "aws_iam_policy" "github_actions_policies" {
 
 # Asociar políticas a roles
 resource "aws_iam_role_policy_attachment" "github_actions_attach" {
-  for_each   = local.sanitized_repos
-  role       = aws_iam_role.github_actions_roles[each.key].name
-  policy_arn = aws_iam_policy.github_actions_policies[each.key].arn
+  for_each   = aws_iam_policy.github_actions_policies
+  role       = aws_iam_role.github_actions_role.name
+  policy_arn = each.value.arn
 }
