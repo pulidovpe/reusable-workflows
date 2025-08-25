@@ -50,18 +50,21 @@ resource "aws_iam_role" "github_actions_roles" {
 }
 
 # 3. Políticas dinámicas por repo y role
+locals {
+  sanitized_repos = { for repo in var.repo_names : replace(repo, "/", "-") => repo }
+}
+
 resource "aws_iam_policy" "github_actions_policies" {
-  # for_each = aws_iam_role.github_actions_roles
-  for_each = toset(var.repo_names)
-  # Sanitizamos el nombre para eliminar caracteres no válidos
-  name = "${replace(each.key, "/", "-")}-policy"
-  path = "/"
+  for_each = local.sanitized_repos
+
+  name   = "${each.key}-policy"
+  path   = "/"
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
         Effect   = "Allow"
-        Action   = var.policy_actions[each.key]
+        Action   = var.policy_actions[each.value] # usamos el repo original como clave
         Resource = "*"
       }
     ]
@@ -69,8 +72,7 @@ resource "aws_iam_policy" "github_actions_policies" {
 }
 
 resource "aws_iam_role_policy_attachment" "github_actions_attach" {
-  for_each   = toset(var.repo_names)
-
-  role       = aws_iam_role.github_actions_roles[each.value].name
-  policy_arn = aws_iam_policy.github_actions_policies[each.value].arn
+  for_each = local.sanitized_repos
+  role     = aws_iam_role.github_actions_roles[each.value].name
+  policy_arn = aws_iam_policy.github_actions_policies[each.key].arn
 }
